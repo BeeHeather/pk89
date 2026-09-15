@@ -45,7 +45,7 @@ object HardwareKeys {
 }
 
 enum class AppTab(val title: String) {
-    Products("Продукция"),
+    Products("Рецептура"),
     Packing("Фасовка"),
     Finance("Финансы"),
 }

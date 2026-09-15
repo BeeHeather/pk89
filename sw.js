@@ -1,7 +1,7 @@
 // Офлайн-работа: оболочка приложения кладётся в кеш при установке.
 // Данные тут ни при чём — они в IndexedDB и кешем не управляются.
 
-const VERSION = 'pk89-v5';
+const VERSION = 'pk89-v22';
 
 const SHELL = [
   './',
@@ -17,11 +17,16 @@ const SHELL = [
   './js/zip.js',
   './js/xlsx.js',
   './js/report.js',
+  './js/backup.js',
+  './js/sync.js',
+  './js/requestsReport.js',
+  './js/packingsReport.js',
   './js/views/products.js',
   './js/views/recipe.js',
   './js/views/packing.js',
-  './js/views/packingMode.js',
   './js/views/accounting.js',
+  './js/views/settings.js',
+  './js/views/requests.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',

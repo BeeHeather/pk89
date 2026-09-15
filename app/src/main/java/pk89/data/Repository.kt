@@ -52,7 +52,7 @@ class Repository(private val file: File) {
         writeNow(snapshot)
     }
 
-    // ---------- продукция ----------
+    // ---------- Рецептура ----------
 
     fun upsertProduct(product: Product) = update { d ->
         val exists = d.products.any { it.id == product.id }

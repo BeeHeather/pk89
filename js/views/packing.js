@@ -1,227 +1,217 @@
-import {
-  button, card, chip, confirmDialog, emptyState, field, h, header,
-  iconButton, openSheet, pill, progress,
-} from '../ui.js';
-import { countOf, formatDateTime, gramsPretty, plural, pretty } from '../format.js';
-import {
-  boxIsClosed, boxIsFull, boxProgress, consumeStockForBox, ingredientGrams,
-  newId, portionGrams, productShortName,
-} from '../model.js';
-import { batchCalculator } from './recipe.js';
+import { button, h, header, openSheet, registerCleanup, vibrate } from '../ui.js';
+import { plural, todayIso } from '../format.js';
+import { newId, productShortName } from '../model.js';
 
-// Какой продукт выбран — живёт между перерисовками, но не в сохраняемых данных.
-let selectedProductId = null;
+// Вкладка «Фасовка» — один кликер. Начали, накликали порции, остановили —
+// результат сам записался в «Учёт» под сегодняшней датой. Сессия хранится
+// в состоянии, так что свёрнутое приложение продолжает с того же места.
 
 export function renderPacking(ctx) {
-  const { state } = ctx;
+  const { session } = ctx.state;
+  return session ? clickerScreen(ctx, session) : idleScreen(ctx);
+}
 
-  if (state.products.length === 0) {
-    return h('div', { class: 'screen' },
-      header({ title: 'Фасовка' }),
-      h('div', { class: 'scroll' },
-        emptyState('📦', 'Сначала нужна продукция',
-          'Заведите карточку на вкладке «Продукция» — потом здесь появятся коробки.'),
-      ),
-    );
-  }
+// ---------- до старта ----------
 
-  if (!state.products.some((p) => p.id === selectedProductId)) {
-    selectedProductId = state.products[0].id;
-  }
-
-  const product = state.products.find((p) => p.id === selectedProductId);
-  const boxes = state.boxes
-    .filter((b) => b.productId === selectedProductId)
-    .sort((a, b) => b.createdAt - a.createdAt);
-
-  const openCount = boxes.filter((b) => !boxIsClosed(b)).length;
-
-  const productChips = h('div', { class: 'chips scroll-x' },
-    state.products.map((p) => chip(`${p.emoji}  ${productShortName(p)}`, {
-      on: p.id === selectedProductId,
-      onclick: () => {
-        selectedProductId = p.id;
-        ctx.render();
-      },
-    })),
+function idleScreen(ctx) {
+  const start = h('button', { class: 'clicker', type: 'button', onclick: () => openStartSheet(ctx) },
+    circleSvg(),
+    h('div', { class: 'face' },
+      h('div', {
+        style: { fontSize: '22px', fontWeight: '700', color: 'var(--accent)' },
+        text: 'Начать фасовку',
+      }),
+      h('div', { class: 'cta', text: 'Выберете продукт и вперёд' }),
+    ),
   );
 
-  const scroll = h('div', { class: 'scroll', style: { paddingTop: '14px' } });
+  return h('div', { class: 'screen' },
+    header({ title: 'Фасовка' }),
+    h('div', { class: 'packing' },
+      h('div', { class: 'clicker-wrap' }, start),
+    ),
+  );
+}
 
-  if (boxes.length === 0) {
-    scroll.appendChild(card({},
-      h('p', { class: 'hint' }, 'Коробок по этой продукции пока нет. Создайте первую — укажете, сколько порций в неё идёт.'),
-    ));
+function openStartSheet(ctx) {
+  openSheet('Что фасуем?', (close) => {
+    const products = [...ctx.state.products].sort((a, b) =>
+      productShortName(a).localeCompare(productShortName(b), 'ru'));
+
+    if (products.length === 0) {
+      return [
+        h('p', { class: 'hint' },
+          'Продукции пока нет — добавьте её на вкладке «Рецептура», и она появится здесь.'),
+      ];
+    }
+
+    const select = h('select', {},
+      h('option', { value: '', text: 'Выберите продукцию…' }),
+      products.map((p) => h('option', {
+        value: p.id,
+        text: `${p.emoji}  ${productShortName(p)}`,
+      })),
+    );
+
+    return [
+      h('div', { class: 'block' },
+        h('p', { class: 'label', text: 'Продукция' }),
+        h('div', { class: 'field' }, select),
+      ),
+      button('Начать', () => {
+        const product = products.find((p) => p.id === select.value);
+        if (!product) {
+          ctx.toast('Сначала выберите продукцию', { error: true });
+          return;
+        }
+        ctx.update((s) => {
+          s.session = {
+            name: productShortName(product),
+            emoji: product.emoji,
+            count: 0,
+            active: true,
+          };
+        });
+        close();
+      }, { primary: true, wide: true }),
+    ];
+  });
+}
+
+// ---------- кликер ----------
+
+function clickerScreen(ctx, session) {
+  let count = session.count;
+
+  const countNode = h('div', { class: 'count', text: String(count) });
+  const ctaNode = h('div', {
+    class: 'cta',
+    text: session.active ? 'Нажмите — плюс порция' : 'Фасовка остановлена',
+  });
+
+  const clicker = h('button', { class: 'clicker', type: 'button', disabled: !session.active },
+    circleSvg(session.active),
+    h('div', { class: 'face' },
+      countNode,
+      h('div', { class: 'of', text: plural(count, 'порция', 'порции', 'порций') }),
+      ctaNode,
+    ),
+  );
+
+  let bumpTimer = null;
+  clicker.addEventListener('click', () => {
+    count += 1;
+    vibrate(12);
+    ctx.updateQuiet((s) => { if (s.session) s.session.count = count; });
+
+    countNode.textContent = String(count);
+    clicker.querySelector('.of').textContent = plural(count, 'порция', 'порции', 'порций');
+    clicker.classList.add('bump');
+    clearTimeout(bumpTimer);
+    bumpTimer = setTimeout(() => clicker.classList.remove('bump'), 110);
+  });
+
+  const controls = h('div', { class: 'btn-row', style: { justifyContent: 'center' } });
+
+  if (session.active) {
+    const stop = button('Стоп фасовки', () => {
+      ctx.update((s) => {
+        if (!s.session) return;
+        s.session.active = false;
+        if (s.session.count > 0) recordPacked(s, s.session);
+      });
+    });
+    stop.classList.add('small');
+    stop.style.flex = 'none';
+    controls.appendChild(stop);
   } else {
-    for (const box of boxes) scroll.appendChild(boxCard(ctx, box));
+    const reset = button('Сброс', () => {
+      ctx.update((s) => { s.session = null; });
+    }, { primary: true });
+    reset.classList.add('small');
+    reset.style.flex = 'none';
+    controls.appendChild(reset);
   }
 
-  scroll.appendChild(batchCalculator(product, 'Норма на коробку', boxes[0]?.targetPortions ?? 50));
-
-  const fab = button('Новая коробка', () => openNewBox(ctx, product), { primary: true, icon: '＋' });
-  fab.classList.add('fab');
+  if (session.active) keepScreenAwake();
 
   return h('div', { class: 'screen' },
     header({
       title: 'Фасовка',
-      subtitle: openCount === 0
-        ? 'Открытых коробок нет'
-        : `${countOf(openCount, 'коробка', 'коробки', 'коробок')} в работе`,
+      subtitle: `${session.emoji}  ${session.name}`,
     }),
-    productChips,
-    scroll,
-    fab,
-  );
-}
-
-function boxCard(ctx, box) {
-  const closed = boxIsClosed(box);
-  const full = boxIsFull(box);
-
-  const status = closed ? pill('Закрыта', 'closed')
-    : full ? pill('Заполнена', 'done')
-      : box.packedPortions > 0 ? pill('В работе', 'work')
-        : pill('Новая', 'new');
-
-  const action = closed
-    ? button('Открыть снова', () => {
-      ctx.update((s) => {
-        const target = s.boxes.find((b) => b.id === box.id);
-        if (target) target.closedAt = null;
-      });
-    })
-    : button(box.packedPortions > 0 ? 'Продолжить' : 'Начать фасовку',
-      () => ctx.startPacking(box.id), { primary: true });
-
-  action.style.flex = '1';
-
-  return card({},
-    h('div', { class: 'row' },
-      h('div', { class: 'strong grow ellipsis', style: { fontSize: '17px' }, text: box.label || 'Коробка' }),
-      status,
-    ),
-    h('div', { class: 'row', style: { alignItems: 'baseline', marginTop: '12px' } },
-      h('span', { class: 'big-num', text: String(box.packedPortions) }),
-      h('span', { class: 'hint', text: `из ${box.targetPortions} ${plural(box.targetPortions, 'порции', 'порций', 'порций')}` }),
-    ),
-    h('div', { style: { marginTop: '10px' } },
-      progress(boxProgress(box), closed ? 'closed' : full ? 'done' : null)),
-    h('p', {
-      class: 'hint',
-      style: { marginTop: '8px' },
-      text: closed && box.closedAt
-        ? `Закрыта ${formatDateTime(box.closedAt)}`
-        : `Создана ${formatDateTime(box.createdAt)}`,
-    }),
-    h('div', { class: 'row', style: { marginTop: '14px' } },
-      action,
-      iconButton('🗑', async () => {
-        const ok = await confirmDialog({
-          title: 'Удалить коробку?',
-          message: `${box.label || 'Коробка'} · собрано ${box.packedPortions} из ${box.targetPortions}. Действие нельзя отменить.`,
-          confirmText: 'Удалить',
-        });
-        if (!ok) return;
-        ctx.update((s) => { s.boxes = s.boxes.filter((b) => b.id !== box.id); });
-      }, { danger: true, label: 'Удалить коробку' }),
+    h('div', { class: 'packing' },
+      h('div', { class: 'clicker-wrap' }, clicker),
+      controls,
+      h('p', { class: 'keys' },
+        session.active
+          ? 'Счёт сохраняется сразу — приложение можно свернуть и вернуться.'
+          : 'Порции записаны в «Учёт» под сегодняшней датой. «Сброс» готовит кликер к новой фасовке.'),
     ),
   );
 }
 
-function openNewBox(ctx, product) {
-  const nextIndex = ctx.state.boxes.filter((b) => b.productId === product.id).length + 1;
-  const draft = { label: `Коробка №${nextIndex}`, target: 50 };
+/** Дописать нафасованное в журнал учёта: под сегодняшней датой, той же строкой. */
+function recordPacked(s, session) {
+  const today = todayIso();
+  let rec = s.packings.find((p) => p.date === today);
+  if (!rec) {
+    rec = { id: newId(), date: today, entries: [], createdAt: Date.now() };
+    s.packings.push(rec);
+  }
+  const entry = rec.entries.find((e) => e.name.toLowerCase() === session.name.toLowerCase());
+  if (entry) {
+    entry.portions += session.count;
+    if (session.emoji) entry.emoji = session.emoji;
+  } else {
+    rec.entries.push({ name: session.name, emoji: session.emoji, portions: session.count });
+  }
+}
 
-  openSheet('Новая коробка', (close) => {
-    const labelField = field({
-      value: draft.label,
-      placeholder: `Коробка №${nextIndex}`,
-      oninput: () => { draft.label = labelField.input.value; },
-    });
+// ---------- оформление и утилиты ----------
 
-    const targetField = field({
-      value: String(draft.target),
-      inputmode: 'numeric',
-      suffix: plural(draft.target, 'порция', 'порции', 'порций'),
-      oninput: () => {
-        const digits = targetField.input.value.replace(/\D/g, '').slice(0, 6);
-        if (digits !== targetField.input.value) targetField.input.value = digits;
-        draft.target = Number(digits) || 0;
-        redraw();
-      },
-    });
+function circleSvg(active = true) {
+  const svgNs = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNs, 'svg');
+  svg.setAttribute('viewBox', '0 0 100 100');
 
-    const targetChips = h('div', { class: 'chips', style: { marginTop: '10px' } },
-      [20, 30, 50, 100, 200].map((n) => chip(String(n), {
-        onclick: () => {
-          draft.target = n;
-          targetField.input.value = String(n);
-          redraw();
-        },
-      })),
-    );
+  const circle = document.createElementNS(svgNs, 'circle');
+  circle.setAttribute('cx', '50');
+  circle.setAttribute('cy', '50');
+  circle.setAttribute('r', '45');
+  circle.setAttribute('fill', 'none');
+  circle.setAttribute('stroke-width', '5.5');
+  circle.setAttribute('stroke', active ? 'var(--accent)' : 'rgba(28,33,64,0.12)');
+  svg.appendChild(circle);
+  return svg;
+}
 
-    const preview = h('div', {});
+/** Экран не гаснет, пока идёт фасовка. */
+function keepScreenAwake() {
+  if (!('wakeLock' in navigator)) return;
 
-    function redraw() {
-      targetField.querySelector('.suffix').textContent =
-        plural(draft.target, 'порция', 'порции', 'порций');
+  let sentinel = null;
+  let active = true;
 
-      for (const node of [...targetChips.children]) {
-        node.className = node.textContent === String(draft.target) ? 'chip on' : 'chip';
-      }
-
-      if (product.ingredients.length === 0) {
-        preview.replaceChildren();
-        return;
-      }
-
-      preview.replaceChildren(card({ tint: 'sky' },
-        h('p', { class: 'label', text: 'Понадобится на коробку' }),
-        ...product.ingredients.map((ingredient) => h('div', { class: 'recipe-line' },
-          h('span', { class: 'name', text: ingredient.name || 'Без названия' }),
-          h('span', { class: 'tsp', text: `${pretty(ingredient.teaspoons * draft.target, 1)} ч. л.` }),
-          h('span', { class: 'g', text: gramsPretty(ingredientGrams(ingredient) * draft.target) }),
-        )),
-        h('div', { class: 'total-line' },
-          h('span', { class: 'name', text: 'Всего смеси' }),
-          h('span', { class: 'value', text: gramsPretty(portionGrams(product) * draft.target) }),
-        ),
-      ));
+  const acquire = async () => {
+    if (!active || document.visibilityState !== 'visible') return;
+    try {
+      sentinel = await navigator.wakeLock.request('screen');
+    } catch {
+      // батарея в режиме экономии или отказ системы — просто работаем без блокировки
     }
+  };
 
-    redraw();
+  // после сворачивания браузер снимает блокировку сам, поэтому берём её заново
+  const onVisibility = () => { if (document.visibilityState === 'visible') acquire(); };
+  document.addEventListener('visibilitychange', onVisibility);
 
-    const create = (startNow) => {
-      const box = {
-        id: newId(),
-        productId: product.id,
-        label: draft.label.trim() || `Коробка №${nextIndex}`,
-        targetPortions: Math.max(1, draft.target),
-        packedPortions: 0,
-        createdAt: Date.now(),
-        closedAt: null,
-      };
-      ctx.update((s) => {
-        s.boxes.push(box);
-        const owner = s.products.find((p) => p.id === box.productId);
-        if (owner) consumeStockForBox(s, owner, box);
-      });
-      close();
-      if (startNow) ctx.startPacking(box.id);
-    };
+  acquire();
 
-    return [
-      h('div', { class: 'block' }, h('p', { class: 'label', text: 'Название' }), labelField),
-      h('div', { class: 'block' },
-        h('p', { class: 'label', text: 'Сколько порций в коробке' }),
-        targetField,
-        targetChips,
-      ),
-      h('div', { class: 'block' }, preview),
-      button('Создать и начать фасовку', () => create(true), { primary: true, wide: true }),
-      h('div', { style: { height: '10px' } }),
-      button('Просто создать', () => create(false), { wide: true }),
-    ];
+  registerCleanup(() => {
+    active = false;
+    document.removeEventListener('visibilitychange', onVisibility);
+    sentinel?.release?.().catch(() => {});
+    sentinel = null;
   });
 }

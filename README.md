@@ -164,3 +164,140 @@ pk89-pwa/
 Чего проверка не заменяет: живого экрана. Вибрацию, Wake Lock, установку на домашний экран и системное
 «Поделиться» можно увидеть только на настоящем телефоне — они реализованы по стандартным API,
 но поведение слегка отличается между версиями Android и прошивками.
+
+## Автокопия на почту (раз в сутки)
+
+Приложение — офлайн-PWA без сервера, само в фоне письма слать не может.
+Поэтому копия отправляется **при первом открытии приложения за сутки** на
+адрес-приёмник, а письмо шлёт бесплатный скрипт в вашем Google-аккаунте.
+
+Настройка (один раз, ~5 минут):
+
+1. Откройте <https://script.google.com> → «Создать проект».
+2. Вставьте вместо содержимого файла `Код.gs`:
+
+   ```js
+   function doPost(e) {
+     MailApp.sendEmail({
+       to: 'ваша@почта.ру',
+       subject: 'Полевая кухня 89 — копия ' + new Date().toLocaleString('ru-RU'),
+       body: 'Автоматическая резервная копия. Файл во вложении — его можно загрузить через «Настройки → Загрузить из резервной копии».',
+       attachments: [Utilities.newBlob(e.postData.contents, 'application/json', 'pk89-backup.json')],
+     });
+     return ContentService.createTextOutput('ok');
+   }
+   ```
+
+3. «Развернуть» → «Новое развёртывание» → тип «Веб-приложение»:
+   выполнять «От моего имени», доступ — «Все». Разрешите доступ при запросе.
+4. Скопируйте URL развёртывания (заканчивается на `/exec`).
+5. Впишите этот URL в константу `BACKUP_URL` в файле `js/backup.js`.
+
+Адрес зашит в приложение, на телефонах ничего вводить не нужно: каждый
+телефон шлёт свою копию сам при первом открытии за сутки. Отправить копию
+вручную можно из ⚙️ «Настройки» → «Отправить на почту сейчас».
+
+## Общие заявки на всех телефонах
+
+Раздел «Заявки» синхронизируется через тот же скрипт: телефон при открытии
+приложения и при каждом изменении заявки отправляет свои данные, скрипт
+сливает их с общей Google-таблицей и возвращает полный список. Побеждает
+более поздняя правка; удаление — пометкой, чтобы разойтись по всем
+устройствам. Без интернета изменения копятся локально и дольются при
+следующем открытии с сетью.
+
+Чтобы включить, замените код скрипта целиком на этот и передеплойте
+(«Управление развёртываниями» → карандаш → «Версия: новая» — URL останется прежним):
+
+```js
+const COLUMNS = ['id', 'date', 'to', 'via', 'boxes', 'doneAt', 'deleted', 'updatedAt', 'createdAt'];
+
+function doPost(e) {
+  if (e.parameter.data === 'requests') {
+    mergeRequests(JSON.parse(e.postData.contents));
+    return ContentService.createTextOutput(JSON.stringify(readRequests()))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  // без параметра — резервная копия письмом, как раньше
+  MailApp.sendEmail({
+    to: 'ваша@почта.ру',
+    subject: 'Полевая кухня 89 — копия ' + new Date().toLocaleString('ru-RU'),
+    body: 'Автоматическая резервная копия. Файл во вложении — его можно загрузить через «Настройки → Загрузить из резервной копии».',
+    attachments: [Utilities.newBlob(e.postData.contents, 'application/json', 'pk89-backup.json')],
+  });
+  return ContentService.createTextOutput('ok');
+}
+
+function sheet() {
+  const props = PropertiesService.getScriptProperties();
+  let id = props.getProperty('sheetId');
+  let ss;
+  if (id) {
+    ss = SpreadsheetApp.openById(id);
+  } else {
+    ss = SpreadsheetApp.create('Полевая кухня 89 — заявки');
+    props.setProperty('sheetId', ss.getId());
+  }
+  let sh = ss.getSheetByName('requests');
+  if (!sh) {
+    sh = ss.insertSheet('requests');
+    sh.appendRow(COLUMNS);
+  }
+  return sh;
+}
+
+function readRequests() {
+  const rows = sheet().getDataRange().getValues();
+  const out = [];
+  for (let i = 1; i < rows.length; i++) {
+    const [id, date, to, via, boxes, doneAt, deleted, updatedAt, createdAt] = rows[i];
+    if (!id) continue;
+    out.push({
+      id: String(id),
+      date: date instanceof Date
+        ? Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd')
+        : String(date),
+      to: String(to || ''),
+      via: String(via || ''),
+      boxes: Number(boxes) || 1,
+      doneAt: doneAt === '' || doneAt == null ? null : Number(doneAt),
+      deleted: !!deleted,
+      updatedAt: Number(updatedAt) || 0,
+      createdAt: Number(createdAt) || 0,
+    });
+  }
+  return out;
+}
+
+function mergeRequests(incoming) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const sh = sheet();
+    const data = sh.getDataRange().getValues();
+    const rowById = {};
+    for (let i = 1; i < data.length; i++) rowById[String(data[i][0])] = i + 1;
+
+    for (const r of (incoming || [])) {
+      if (!r || !r.id) continue;
+      const values = [
+        String(r.id), "'" + String(r.date || ''), String(r.to || ''), String(r.via || ''),
+        Number(r.boxes) || 1, r.doneAt == null ? '' : Number(r.doneAt),
+        r.deleted ? 1 : '', Number(r.updatedAt) || 0, Number(r.createdAt) || 0,
+      ];
+      const rowIndex = rowById[String(r.id)];
+      if (rowIndex) {
+        const current = Number(data[rowIndex - 1][7]) || 0;
+        if ((Number(r.updatedAt) || 0) > current) {
+          sh.getRange(rowIndex, 1, 1, COLUMNS.length).setValues([values]);
+        }
+      } else {
+        sh.appendRow(values);
+        rowById[String(r.id)] = sh.getLastRow();
+      }
+    }
+  } finally {
+    lock.releaseLock();
+  }
+}
+```

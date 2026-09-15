@@ -1,19 +1,15 @@
 import {
-  button, card, chip, confirmDialog, emptyState, field, h, header, openSheet,
+  button, card, chip, confirmDialog, emptyState, field, h, header, iconButton, openSheet, stepper,
 } from '../ui.js';
-import { countOf, gramsPretty } from '../format.js';
-import { EMOJIS } from '../presets.js';
-import { newId, portionGrams, productShortName } from '../model.js';
+import { countOf } from '../format.js';
+import { EMOJIS, PRESETS } from '../presets.js';
+import {
+  UNITS, amountText, newId, productShortName, totalsText, unitInfo,
+} from '../model.js';
+import { openSettings } from './settings.js';
 
 export function renderProducts(ctx) {
   const { state } = ctx;
-
-  const grouped = new Map();
-  for (const product of [...state.products].sort(byCategoryThenKind)) {
-    const key = product.category.trim() || 'Без категории';
-    if (!grouped.has(key)) grouped.set(key, []);
-    grouped.get(key).push(product);
-  }
 
   const scroll = h('div', { class: 'scroll' });
 
@@ -21,14 +17,13 @@ export function renderProducts(ctx) {
     scroll.appendChild(emptyState(
       '🥣',
       'Пока ничего нет',
-      'Добавьте первый вид продукции — например, кисель смородиновый. Рецепт заполните внутри карточки.',
+      'Добавьте первый вид продукции — например, кисель смородиновый. Рецепт заполняется в этой же форме.',
     ));
   } else {
-    for (const [category, products] of grouped) {
-      scroll.appendChild(h('div', { class: 'group-label', text: category }));
-      for (const product of products) {
-        scroll.appendChild(productCard(ctx, product));
-      }
+    const sorted = [...state.products].sort((a, b) =>
+      productShortName(a).localeCompare(productShortName(b), 'ru'));
+    for (const product of sorted) {
+      scroll.appendChild(productCard(ctx, product));
     }
   }
 
@@ -39,22 +34,17 @@ export function renderProducts(ctx) {
     header({
       title: 'Продукция',
       subtitle: countOf(state.products.length, 'карточка', 'карточки', 'карточек'),
+      actions: iconButton('⚙️', () => openSettings(ctx), { label: 'Настройки' }),
     }),
     scroll,
     fab,
   );
 }
 
-function byCategoryThenKind(a, b) {
-  const byCategory = a.category.localeCompare(b.category, 'ru');
-  return byCategory !== 0 ? byCategory : a.kind.localeCompare(b.kind, 'ru');
-}
-
 function productCard(ctx, product) {
-  const grams = portionGrams(product);
   const subtitle = product.ingredients.length === 0
     ? 'Рецепт не заполнен'
-    : `${countOf(product.ingredients.length, 'ингредиент', 'ингредиента', 'ингредиентов')} · ${gramsPretty(grams)} на порцию`;
+    : `${countOf(product.ingredients.length, 'ингредиент', 'ингредиента', 'ингредиентов')} · ${totalsText(product)} на порцию`;
 
   return card({ onclick: () => ctx.openProduct(product.id) },
     h('div', { class: 'row' },
@@ -74,28 +64,19 @@ function productCard(ctx, product) {
 }
 
 function openEditor(ctx, existing) {
-  const knownCategories = [...new Set(
-    ctx.state.products.map((p) => p.category.trim()).filter(Boolean),
-  )];
-
   const draft = {
-    category: existing?.category ?? '',
-    kind: existing?.kind ?? '',
+    name: existing?.name ?? '',
     emoji: existing?.emoji ?? '🥣',
     note: existing?.note ?? '',
+    // рецепт правится в черновике и попадает в данные только по «Сохранить»
+    ingredients: structuredClone(existing?.ingredients ?? []),
   };
 
   openSheet(existing ? 'Карточка продукции' : 'Новая продукция', (close) => {
-    const categoryField = field({
-      value: draft.category,
-      placeholder: 'Кисель',
-      oninput: () => { draft.category = categoryField.input.value; refreshSave(); },
-    });
-
-    const kindField = field({
-      value: draft.kind,
-      placeholder: 'Смородиновый',
-      oninput: () => { draft.kind = kindField.input.value; refreshSave(); },
+    const nameField = field({
+      value: draft.name,
+      placeholder: 'Кисель смородиновый',
+      oninput: () => { draft.name = nameField.input.value; refreshSave(); },
     });
 
     const noteField = field({
@@ -105,16 +86,6 @@ function openEditor(ctx, existing) {
       rows: 3,
       oninput: () => { draft.note = noteField.input.value; },
     });
-
-    const categoryChips = h('div', { class: 'chips', style: { marginTop: '8px' } },
-      knownCategories.map((name) => chip(name, {
-        onclick: () => {
-          draft.category = name;
-          categoryField.input.value = name;
-          refreshSave();
-        },
-      })),
-    );
 
     const emojiChips = h('div', { class: 'chips' },
       EMOJIS.map((emoji) => {
@@ -130,12 +101,53 @@ function openEditor(ctx, existing) {
       }),
     );
 
+    const recipeList = h('div', {});
+
+    function redrawRecipe() {
+      const rows = draft.ingredients.map((ingredient) => h('div', {
+        class: 'recipe-line',
+        style: { padding: '8px 0', cursor: 'pointer' },
+        onclick: () => openIngredientSheet(ingredient, {
+          onSave: (data) => {
+            Object.assign(ingredient, data);
+            redrawRecipe();
+          },
+          onDelete: () => {
+            draft.ingredients = draft.ingredients.filter((i) => i !== ingredient);
+            redrawRecipe();
+          },
+        }),
+      },
+      h('span', { class: 'name', text: ingredient.name || 'Без названия' }),
+      h('span', { class: 'g', text: amountText(ingredient.amount, ingredient.unit) }),
+      ));
+
+      recipeList.replaceChildren(
+        draft.ingredients.length === 0
+          ? h('p', { class: 'hint', text: 'Ингредиентов пока нет — добавьте первый.' })
+          : h('div', {}, ...rows,
+            h('div', { class: 'total-line' },
+              h('span', { class: 'name', text: 'На порцию' }),
+              h('span', { class: 'value', text: totalsText(draft) }),
+            )),
+        h('div', { style: { marginTop: '10px' } },
+          button('＋ Добавить ингредиент', () => openIngredientSheet(null, {
+            onSave: (data) => {
+              draft.ingredients.push({ id: newId(), ...data });
+              redrawRecipe();
+            },
+          }), { wide: true })),
+      );
+    }
+
+    redrawRecipe();
+
     const saveButton = button('Сохранить', () => {
       const payload = {
-        category: draft.category.trim(),
-        kind: draft.kind.trim(),
+        name: draft.name.trim(),
         emoji: draft.emoji,
         note: draft.note.trim(),
+        ingredients: draft.ingredients,
       };
 
       ctx.update((s) => {
@@ -143,14 +155,14 @@ function openEditor(ctx, existing) {
           const target = s.products.find((p) => p.id === existing.id);
           if (target) Object.assign(target, payload);
         } else {
-          s.products.push({ id: newId(), ingredients: [], ...payload });
+          s.products.push({ id: newId(), ...payload });
         }
       });
       close();
     }, { primary: true });
 
     function refreshSave() {
-      saveButton.disabled = !draft.category.trim() && !draft.kind.trim();
+      saveButton.disabled = !draft.name.trim();
     }
     refreshSave();
 
@@ -173,11 +185,113 @@ function openEditor(ctx, existing) {
     }
 
     return [
-      h('div', { class: 'block' }, h('p', { class: 'label', text: 'Категория' }), categoryField,
-        knownCategories.length ? categoryChips : null),
-      h('div', { class: 'block' }, h('p', { class: 'label', text: 'Вид' }), kindField),
+      h('div', { class: 'block' }, h('p', { class: 'label', text: 'Название' }), nameField),
       h('div', { class: 'block' }, h('p', { class: 'label', text: 'Значок' }), emojiChips),
+      h('div', { class: 'block' }, h('p', { class: 'label', text: 'Рецепт на одну порцию' }), recipeList),
       h('div', { class: 'block' }, h('p', { class: 'label', text: 'Как готовить' }), noteField),
+      actions,
+    ];
+  });
+}
+
+/**
+ * Шторка одного ингредиента. Работает с колбэками, а не с состоянием:
+ * рецепт лежит в черновике карточки, пока её не сохранили.
+ */
+function openIngredientSheet(existing, { onSave, onDelete }) {
+  const draft = {
+    name: existing?.name ?? '',
+    amount: existing?.amount ?? 5,
+    unit: existing?.unit ?? 'g',
+  };
+
+  const UNIT_TITLES = { g: 'Граммы', tsp: 'Чайные ложки', tbsp: 'Столовые ложки' };
+
+  openSheet(existing ? 'Ингредиент' : 'Новый ингредиент', (close) => {
+    const nameField = field({
+      value: draft.name,
+      placeholder: 'Сахар',
+      oninput: () => {
+        draft.name = nameField.input.value;
+        saveButton.disabled = !draft.name.trim();
+        redrawSuggestions();
+      },
+    });
+
+    const suggestions = h('div', { class: 'chips', style: { marginTop: '8px' } });
+
+    function redrawSuggestions() {
+      const query = draft.name.trim().toLowerCase();
+      const matches = (query
+        ? PRESETS.filter((name) => name.toLowerCase().includes(query))
+        : PRESETS
+      ).slice(0, 6);
+
+      suggestions.replaceChildren(...matches.map((name) => chip(name, {
+        on: name.toLowerCase() === query,
+        onclick: () => {
+          draft.name = name;
+          nameField.input.value = name;
+          saveButton.disabled = false;
+          redrawSuggestions();
+        },
+      })));
+    }
+
+    const unitChips = h('div', { class: 'chips' });
+    const amountSlot = h('div', {});
+
+    function redrawUnits() {
+      unitChips.replaceChildren(...UNITS.map((u) => chip(UNIT_TITLES[u.id], {
+        on: u.id === draft.unit,
+        onclick: () => {
+          if (draft.unit === u.id) return;
+          draft.unit = u.id;
+          redrawUnits();
+          rebuildAmount();
+        },
+      })));
+    }
+
+    function rebuildAmount() {
+      const unit = unitInfo(draft.unit);
+      amountSlot.replaceChildren(stepper({
+        value: draft.amount,
+        step: draft.unit === 'g' ? 0.5 : 0.25,
+        suffix: unit.label,
+        onchange: (value) => { draft.amount = value; },
+      }));
+    }
+
+    const saveButton = button('Сохранить', () => {
+      onSave({ name: draft.name.trim(), amount: draft.amount, unit: draft.unit });
+      close();
+    }, { primary: true });
+
+    saveButton.disabled = !draft.name.trim();
+    redrawSuggestions();
+    redrawUnits();
+    rebuildAmount();
+
+    const actions = h('div', { class: 'btn-row' }, saveButton);
+
+    if (existing && onDelete) {
+      actions.appendChild(button('Удалить', async () => {
+        const ok = await confirmDialog({
+          title: 'Убрать ингредиент?',
+          message: 'Строка исчезнет из рецепта и из расчёта партии.',
+          confirmText: 'Убрать',
+        });
+        if (!ok) return;
+        onDelete();
+        close();
+      }, { danger: true }));
+    }
+
+    return [
+      h('div', { class: 'block' }, h('p', { class: 'label', text: 'Название' }), nameField, suggestions),
+      h('div', { class: 'block' }, h('p', { class: 'label', text: 'Единица измерения' }), unitChips),
+      h('div', { class: 'block' }, h('p', { class: 'label', text: 'Количество на порцию' }), amountSlot),
       actions,
     ];
   });

@@ -73,7 +73,7 @@ fun ProductsScreen(
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             ScreenHeader(
-                title = "Продукция",
+                title = "«Рецептура»",
                 subtitle = countOf(data.products.size, "карточка", "карточки", "карточек"),
             )
 

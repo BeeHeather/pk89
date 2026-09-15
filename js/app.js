@@ -1,20 +1,23 @@
 import { clear, h, handlePop, pushOverlay, runCleanups, toast } from './ui.js';
 import { flushState, loadState, requestPersistence, saveState } from './store.js';
+import { maybeSendDailyBackup } from './backup.js';
+import { syncRequests } from './sync.js';
 import { renderProducts } from './views/products.js';
 import { renderRecipe } from './views/recipe.js';
 import { renderPacking } from './views/packing.js';
-import { renderPackingMode } from './views/packingMode.js';
 import { renderAccounting } from './views/accounting.js';
+import { renderRequests } from './views/requests.js';
 
 const TABS = [
-  { id: 'products', title: 'Продукция' },
+  { id: 'products', title: 'Рецептура' },
   { id: 'packing', title: 'Фасовка' },
+  { id: 'requests', title: 'Заявки' },
   { id: 'accounting', title: 'Учёт' },
 ];
 
 const root = document.getElementById('root');
 
-const route = { tab: 'products', productId: null, boxId: null };
+const route = { tab: 'products', productId: null };
 let state = null;
 
 /** Контекст, который получают все экраны. */
@@ -23,9 +26,9 @@ const ctx = {
   update,
   updateQuiet,
   openProduct,
-  startPacking,
   render,
   toast,
+  syncRequests: () => syncRequests(ctx),
 };
 
 /** Изменить данные и перерисовать. Мутатор работает с копией. */
@@ -57,35 +60,16 @@ function openProduct(id) {
   });
 }
 
-function startPacking(boxId) {
-  route.boxId = boxId;
-  render();
-  pushOverlay(() => {
-    route.boxId = null;
-    render();
-  });
-}
-
 function render() {
   const product = route.productId
     ? state.products.find((p) => p.id === route.productId)
     : null;
-  const box = route.boxId
-    ? state.boxes.find((b) => b.id === route.boxId)
-    : null;
-  const boxProduct = box ? state.products.find((p) => p.id === box.productId) : null;
 
   // карточку могли удалить, пока экран открыт
   if (route.productId && !product) route.productId = null;
-  if (route.boxId && (!box || !boxProduct)) route.boxId = null;
 
   runCleanups();
   clear(root);
-
-  if (box && boxProduct) {
-    root.appendChild(renderPackingMode(ctx, box, boxProduct));
-    return;
-  }
 
   if (product) {
     root.appendChild(renderRecipe(ctx, product));
@@ -95,6 +79,7 @@ function render() {
   const screen = h('div', { class: 'screen' });
   if (route.tab === 'products') screen.appendChild(renderProducts(ctx));
   else if (route.tab === 'packing') screen.appendChild(renderPacking(ctx));
+  else if (route.tab === 'requests') screen.appendChild(renderRequests(ctx));
   else screen.appendChild(renderAccounting(ctx));
 
   screen.appendChild(renderTabs());
@@ -135,6 +120,11 @@ async function start() {
   render();
 
   requestPersistence();
+  maybeSendDailyBackup(state);
+  syncRequests(ctx);
+
+  // вернулась сеть — дольём накопленные офлайн изменения заявок
+  window.addEventListener('online', () => syncRequests(ctx));
 
   if ('serviceWorker' in navigator) {
     try {
