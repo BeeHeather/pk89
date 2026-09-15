@@ -180,8 +180,15 @@ export function pushOverlay(close) {
   history.pushState({ pk89: overlays.length }, '');
 }
 
+// Сколько ближайших popstate пропустить: их вызвал dismissTop, слой уже закрыт.
+let silentPops = 0;
+
 /** Вызывается из обработчика popstate. */
 export function handlePop() {
+  if (silentPops > 0) {
+    silentPops -= 1;
+    return true;
+  }
   const close = overlays.pop();
   if (close) {
     close();
@@ -190,9 +197,18 @@ export function handlePop() {
   return false;
 }
 
-/** Программное закрытие верхнего слоя — через историю, чтобы записи не копились. */
+/**
+ * Программное закрытие верхнего слоя. Слой снимается сразу же:
+ * history.back() асинхронен, и если ждать popstate, то открытый следом
+ * слой (например, экран фасовки после шторки) успеет встать в стек
+ * и будет закрыт вместо этого. Запись истории убираем «тихим» back().
+ */
 export function dismissTop() {
-  if (overlays.length) history.back();
+  const close = overlays.pop();
+  if (!close) return;
+  close();
+  silentPops += 1;
+  history.back();
 }
 
 export function overlayDepth() {

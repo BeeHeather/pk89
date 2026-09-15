@@ -4,12 +4,12 @@ import { renderProducts } from './views/products.js';
 import { renderRecipe } from './views/recipe.js';
 import { renderPacking } from './views/packing.js';
 import { renderPackingMode } from './views/packingMode.js';
-import { renderFinance } from './views/finance.js';
+import { renderAccounting } from './views/accounting.js';
 
 const TABS = [
   { id: 'products', title: 'Продукция' },
   { id: 'packing', title: 'Фасовка' },
-  { id: 'finance', title: 'Финансы' },
+  { id: 'accounting', title: 'Учёт' },
 ];
 
 const root = document.getElementById('root');
@@ -95,7 +95,7 @@ function render() {
   const screen = h('div', { class: 'screen' });
   if (route.tab === 'products') screen.appendChild(renderProducts(ctx));
   else if (route.tab === 'packing') screen.appendChild(renderPacking(ctx));
-  else screen.appendChild(renderFinance(ctx));
+  else screen.appendChild(renderAccounting(ctx));
 
   screen.appendChild(renderTabs());
   root.appendChild(screen);
