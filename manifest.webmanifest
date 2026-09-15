@@ -1,0 +1,18 @@
+{
+  "name": "Полевая кухня 89",
+  "short_name": "Кухня 89",
+  "description": "Рецепты, фасовка и пожертвования для цеха готовых пакетов",
+  "lang": "ru",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F1F3FB",
+  "theme_color": "#F1F3FB",
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

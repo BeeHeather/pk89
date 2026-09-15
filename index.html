@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Полевая кухня 89</title>
+
+  <!-- viewport-fit=cover — чтобы фон уходил под вырез и панель жестов -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#F1F3FB">
+  <meta name="description" content="Рецепты, фасовка и пожертвования для цеха готовых пакетов">
+
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icons/icon-192.png" sizes="192x192" type="image/png">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Кухня 89">
+
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+
+  <div id="backdrop" aria-hidden="true">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+    <div class="blob blob-4"></div>
+  </div>
+
+  <div id="root"></div>
+
+  <noscript>
+    <p style="padding:24px">Для работы приложения нужен включённый JavaScript.</p>
+  </noscript>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
