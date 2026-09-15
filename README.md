@@ -212,6 +212,15 @@ pk89-pwa/
 ```js
 const COLUMNS = ['id', 'date', 'to', 'via', 'boxes', 'doneAt', 'deleted', 'updatedAt', 'createdAt'];
 
+// GET — для проверки в браузере: /exec?data=requests покажет общие заявки
+function doGet(e) {
+  if (e.parameter.data === 'requests') {
+    return ContentService.createTextOutput(JSON.stringify(readRequests()))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  return ContentService.createTextOutput('ok');
+}
+
 function doPost(e) {
   if (e.parameter.data === 'requests') {
     mergeRequests(JSON.parse(e.postData.contents));
