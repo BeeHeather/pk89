@@ -8,10 +8,16 @@ import { mergeRequests } from './model.js';
 
 let inFlight = false;
 
+/** Идёт ли сейчас обмен с сервером — для лоадера на вкладке «Заявки». */
+export function isSyncing() {
+  return inFlight;
+}
+
 export async function syncRequests(ctx) {
   if (inFlight) return;
   if (navigator.onLine === false) return; // офлайн — дольём при следующем запуске
   inFlight = true;
+  ctx.render(); // показать лоадер
 
   try {
     const response = await fetch(`${BACKUP_URL}?data=requests`, {
@@ -30,6 +36,7 @@ export async function syncRequests(ctx) {
     console.warn('Не удалось синхронизировать заявки', error);
   } finally {
     inFlight = false;
+    ctx.render(); // убрать лоадер и показать свежий список
   }
 }
 

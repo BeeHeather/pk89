@@ -664,3 +664,23 @@ h2.section {
   color: var(--ink);
   padding: 0;
 }
+
+/* лоадер синхронизации на «Заявках» */
+.sync-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 48px 24px;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+.sync-loader .ring {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid rgba(91, 124, 250, .22);
+  border-top-color: var(--accent);
+  animation: sync-spin .9s linear infinite;
+}
+@keyframes sync-spin { to { transform: rotate(360deg); } }

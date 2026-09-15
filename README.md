@@ -214,7 +214,8 @@ const COLUMNS = ['id', 'date', 'to', 'via', 'boxes', 'doneAt', 'deleted', 'updat
 
 // GET — для проверки в браузере: /exec?data=requests покажет общие заявки
 function doGet(e) {
-  if (e.parameter.data === 'requests') {
+  const params = (e && e.parameter) || {};
+  if (params.data === 'requests') {
     return ContentService.createTextOutput(JSON.stringify(readRequests()))
       .setMimeType(ContentService.MimeType.JSON);
   }
@@ -222,7 +223,12 @@ function doGet(e) {
 }
 
 function doPost(e) {
-  if (e.parameter.data === 'requests') {
+  const params = (e && e.parameter) || {};
+  if (!e || !e.postData) {
+    // запуск кнопкой «Выполнить» в редакторе — сюда приходят только HTTP-запросы
+    return ContentService.createTextOutput('нет данных — вызывается по URL');
+  }
+  if (params.data === 'requests') {
     mergeRequests(JSON.parse(e.postData.contents));
     return ContentService.createTextOutput(JSON.stringify(readRequests()))
       .setMimeType(ContentService.MimeType.JSON);

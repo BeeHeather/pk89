@@ -95,6 +95,8 @@ function renderTabs() {
         if (route.tab === tab.id) return;
         route.tab = tab.id;
         render();
+        // вход на «Заявки» подтягивает свежие данные с сервера
+        if (tab.id === 'requests') syncRequests(ctx);
       },
     }, tab.title)),
   );

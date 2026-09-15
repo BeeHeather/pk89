@@ -6,6 +6,7 @@ import {
   countOf, daysAgoIso, isoToUi, monthTitle, parseUiDate, plural, todayIso,
 } from '../format.js';
 import { newId } from '../model.js';
+import { isSyncing } from '../sync.js';
 import { buildRequestsReport, requestsReportFileName } from '../requestsReport.js';
 
 export function renderRequests(ctx) {
@@ -23,7 +24,13 @@ export function renderRequests(ctx) {
 
   const scroll = h('div', { class: 'scroll', style: { paddingTop: '14px' } });
 
-  if (visible.length === 0) {
+  if (isSyncing()) {
+    // идёт обмен с сервером: список спрятан, но создать заявку можно
+    scroll.appendChild(h('div', { class: 'sync-loader' },
+      h('div', { class: 'ring' }),
+      h('p', { text: 'Обновление информации…' }),
+    ));
+  } else if (visible.length === 0) {
     scroll.appendChild(emptyState('📮', 'Заявок пока нет',
       'Создайте первую — дата, кому передать и сколько коробок нужно.'));
   } else {
