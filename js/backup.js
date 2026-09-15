@@ -3,7 +3,7 @@
 // их письмом). Чистый PWA без сервера сам по расписанию в фоне работать
 // не может — поэтому отправка привязана к открытию.
 
-export const BACKUP_URL = 'https://script.google.com/macros/s/AKfycbwNUmok3UM0NoStDf3FJowMPs2wzubxDYCL0IbFdtl1EwnfuDJ1kSZ8hoB5ML8Oc0O4AQ/exec';
+export const BACKUP_URL = 'https://script.google.com/macros/s/AKfycbzVW3ZfjUkgeUCSQcI-Cr0WDMDALqLkx84MC-lKqO3hEtkq3xgK66PEaMAWZnSC6EMhUg/exec';
 
 const LAST_KEY = 'pk89-backup-sent';
 
