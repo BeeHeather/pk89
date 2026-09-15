@@ -4,8 +4,8 @@ import {
 } from '../ui.js';
 import { countOf, formatDateTime, gramsPretty, plural, pretty } from '../format.js';
 import {
-  boxIsClosed, boxIsFull, boxProgress, ingredientGrams, newId,
-  portionGrams, productShortName,
+  boxIsClosed, boxIsFull, boxProgress, consumeStockForBox, ingredientGrams,
+  newId, portionGrams, productShortName,
 } from '../model.js';
 import { batchCalculator } from './recipe.js';
 
@@ -202,7 +202,11 @@ function openNewBox(ctx, product) {
         createdAt: Date.now(),
         closedAt: null,
       };
-      ctx.update((s) => { s.boxes.push(box); });
+      ctx.update((s) => {
+        s.boxes.push(box);
+        const owner = s.products.find((p) => p.id === box.productId);
+        if (owner) consumeStockForBox(s, owner, box);
+      });
       close();
       if (startNow) ctx.startPacking(box.id);
     };

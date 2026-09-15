@@ -43,8 +43,50 @@ export function boxProgress(box) {
   return Math.min(1, Math.max(0, box.packedPortions / box.targetPortions));
 }
 
+// ---------- склад ингредиентов ----------
+
+/** Ключ ингредиента на складе: одно и то же имя в разных продуктах — одна позиция. */
+export function stockKey(name) {
+  return String(name || '').trim().toLowerCase();
+}
+
+const STOCK_HISTORY_LIMIT = 100;
+
+/**
+ * Изменить остаток и записать это в историю позиции.
+ * Положительная delta — приход, отрицательная — расход. Остаток может уйти
+ * в минус: это сигнал, что склад не оприходован, а не повод терять расход.
+ */
+export function applyStockChange(state, name, delta, note) {
+  const key = stockKey(name);
+  if (!key || !delta) return;
+
+  let entry = state.stock.find((s) => stockKey(s.name) === key);
+  if (!entry) {
+    entry = { id: newId(), name: String(name).trim(), grams: 0, history: [] };
+    state.stock.push(entry);
+  }
+
+  entry.grams = Math.round((entry.grams + delta) * 100) / 100;
+  entry.history.push({ at: Date.now(), delta, after: entry.grams, note: String(note || '') });
+  if (entry.history.length > STOCK_HISTORY_LIMIT) {
+    entry.history.splice(0, entry.history.length - STOCK_HISTORY_LIMIT);
+  }
+}
+
+/** Списать со склада всё, что уходит на новую коробку. */
+export function consumeStockForBox(state, product, box) {
+  for (const ingredient of product.ingredients || []) {
+    const grams = ingredientGrams(ingredient) * box.targetPortions;
+    if (grams > 0) {
+      applyStockChange(state, ingredient.name, -grams,
+        `Фасовка: ${box.label || 'коробка'} (${box.targetPortions} порц.)`);
+    }
+  }
+}
+
 export function emptyState() {
-  return { products: [], boxes: [], donations: [], currency: '₸' };
+  return { products: [], boxes: [], donations: [], stock: [], currency: '₸' };
 }
 
 /** Приводит прочитанные данные к ожидаемой форме: чужой или старый файл не должен ронять приложение. */
@@ -89,10 +131,25 @@ export function normalize(raw) {
     createdAt: Number(d.createdAt) || Date.now(),
   })) : [];
 
+  const stock = Array.isArray(raw.stock) ? raw.stock
+    .map((s) => ({
+      id: s.id || newId(),
+      name: String(s.name ?? '').trim(),
+      grams: Number(s.grams) || 0,
+      history: Array.isArray(s.history) ? s.history.map((e) => ({
+        at: Number(e.at) || Date.now(),
+        delta: Number(e.delta) || 0,
+        after: Number(e.after) || 0,
+        note: String(e.note ?? ''),
+      })) : [],
+    }))
+    .filter((s) => s.name) : [];
+
   return {
     products,
     boxes,
     donations,
+    stock,
     currency: typeof raw.currency === 'string' && raw.currency ? raw.currency : '₸',
   };
 }
@@ -149,6 +206,7 @@ export function seedState() {
     ],
     boxes: [],
     donations: [],
+    stock: [],
     currency: '₸',
     createdAt: now,
   };
