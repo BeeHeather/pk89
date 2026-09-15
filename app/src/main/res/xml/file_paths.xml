@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Отчёты складываются сюда, отсюда же уходят в «Поделиться» -->
+    <cache-path name="reports" path="reports/" />
+</paths>

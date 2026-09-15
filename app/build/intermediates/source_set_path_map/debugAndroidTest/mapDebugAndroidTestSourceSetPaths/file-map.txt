@@ -1,0 +1,4 @@
+pk89.test.app-androidTest-0 /Users/e.ozerina/Desktop/pk89-android/app/build/generated/res/resValues/androidTest/debug
+pk89.test.app-mergeDebugAndroidTestResources-1 /Users/e.ozerina/Desktop/pk89-android/app/build/intermediates/incremental/debugAndroidTest/mergeDebugAndroidTestResources/merged.dir
+pk89.test.app-mergeDebugAndroidTestResources-2 /Users/e.ozerina/Desktop/pk89-android/app/build/intermediates/incremental/debugAndroidTest/mergeDebugAndroidTestResources/stripped.dir
+pk89.test.app-debugAndroidTest-3 /Users/e.ozerina/Desktop/pk89-android/app/build/intermediates/merged_res/debugAndroidTest/mergeDebugAndroidTestResources
