@@ -2,7 +2,7 @@ import {
   button, card, chip, confirmDialog, emptyState, field, h, header,
   iconButton, openSheet, shareOrDownload, tile,
 } from '../ui.js';
-import { countOf, daysAgoIso, isoToUi, parseUiDate, plural, todayIso } from '../format.js';
+import { countOf, daysAgoIso, isoToUi, plural, todayIso } from '../format.js';
 import { newId, productShortName } from '../model.js';
 import { EMOJIS } from '../presets.js';
 import { buildPackingsReport, packingsReportFileName } from '../packingsReport.js';
@@ -111,14 +111,12 @@ function postButton(ctx) {
 function openPostSheet(ctx) {
   openSheet('Пост о фасовке', (close) => {
     const fromField = field({
-      value: isoToUi(daysAgoIso(7)),
-      placeholder: 'дд.мм.гггг',
-      inputmode: 'numeric',
+      value: daysAgoIso(7),
+      type: 'date',
     });
     const toField = field({
-      value: isoToUi(todayIso()),
-      placeholder: 'дд.мм.гггг',
-      inputmode: 'numeric',
+      value: todayIso(),
+      type: 'date',
     });
 
     const boxesField = field({
@@ -133,10 +131,10 @@ function openPostSheet(ctx) {
     });
 
     const create = button('Создать', async () => {
-      let from = parseUiDate(fromField.input.value);
-      let to = parseUiDate(toField.input.value);
+      let from = fromField.input.value;
+      let to = toField.input.value;
       if (!from || !to) {
-        ctx.toast('Не понимаю дату — нужен формат 31.12.2026', { error: true });
+        ctx.toast('Укажите обе даты периода', { error: true });
         return;
       }
       if (from > to) [from, to] = [to, from];
@@ -234,14 +232,13 @@ function openPacking(ctx, existing) {
 
   openSheet(existing ? 'Фасовка' : 'Новая фасовка', (close) => {
     const dateField = field({
-      value: isoToUi(existing?.date ?? todayIso()),
-      placeholder: 'дд.мм.гггг',
-      inputmode: 'numeric',
+      value: existing?.date ?? todayIso(),
+      type: 'date',
     });
 
     const dateChips = h('div', { class: 'chips', style: { marginTop: '8px' } },
-      chip('Сегодня', { onclick: () => { dateField.input.value = isoToUi(todayIso()); } }),
-      chip('Вчера', { onclick: () => { dateField.input.value = isoToUi(daysAgoIso(1)); } }),
+      chip('Сегодня', { onclick: () => { dateField.input.value = todayIso(); } }),
+      chip('Вчера', { onclick: () => { dateField.input.value = daysAgoIso(1); } }),
     );
 
     const rowsBox = h('div', {});
@@ -310,9 +307,9 @@ function openPacking(ctx, existing) {
     redrawRows();
 
     const saveButton = button('Сохранить', () => {
-      const date = parseUiDate(dateField.input.value);
+      const date = dateField.input.value;
       if (!date) {
-        ctx.toast('Не понимаю дату — нужен формат 31.12.2026', { error: true });
+        ctx.toast('Укажите дату фасовки', { error: true });
         return;
       }
       // одинаковая продукция в нескольких строках складывается

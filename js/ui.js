@@ -88,10 +88,10 @@ export function chip(label, { on, onclick } = {}) {
   return h('button', { class: on ? 'chip on' : 'chip', onclick, type: 'button' }, label);
 }
 
-export function field({ value = '', placeholder = '', suffix, multiline, rows = 3, inputmode, center, oninput }) {
+export function field({ value = '', placeholder = '', suffix, multiline, rows = 3, inputmode, type, center, oninput }) {
   const input = multiline
     ? h('textarea', { placeholder, rows, oninput })
-    : h('input', { type: 'text', value, placeholder, oninput });
+    : h('input', { type: type || 'text', value, placeholder, oninput });
 
   if (!multiline && inputmode) input.setAttribute('inputmode', inputmode);
   if (multiline) input.value = value;

@@ -3,7 +3,7 @@ import {
   iconButton, openSheet, pill, shareOrDownload, stepper,
 } from '../ui.js';
 import {
-  countOf, daysAgoIso, isoToUi, monthTitle, parseUiDate, plural, todayIso,
+  countOf, daysAgoIso, isoToUi, monthTitle, plural, todayIso,
 } from '../format.js';
 import { newId } from '../model.js';
 import { isSyncing } from '../sync.js';
@@ -153,14 +153,13 @@ function openRequest(ctx, existing) {
 
   openSheet(existing ? 'Заявка' : 'Новая заявка', (close) => {
     const dateField = field({
-      value: isoToUi(existing?.date ?? todayIso()),
-      placeholder: 'дд.мм.гггг',
-      inputmode: 'numeric',
+      value: existing?.date ?? todayIso(),
+      type: 'date',
     });
 
     const dateChips = h('div', { class: 'chips', style: { marginTop: '8px' } },
-      chip('Сегодня', { onclick: () => { dateField.input.value = isoToUi(todayIso()); } }),
-      chip('Завтра', { onclick: () => { dateField.input.value = isoToUi(daysAgoIso(-1)); } }),
+      chip('Сегодня', { onclick: () => { dateField.input.value = todayIso(); } }),
+      chip('Завтра', { onclick: () => { dateField.input.value = daysAgoIso(-1); } }),
     );
 
     const toField = field({
@@ -198,9 +197,9 @@ function openRequest(ctx, existing) {
     });
 
     const saveButton = button('Сохранить', () => {
-      const date = parseUiDate(dateField.input.value);
+      const date = dateField.input.value;
       if (!date) {
-        ctx.toast('Не понимаю дату — нужен формат 31.12.2026', { error: true });
+        ctx.toast('Укажите дату заявки', { error: true });
         return;
       }
       const payload = {

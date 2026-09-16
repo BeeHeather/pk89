@@ -684,3 +684,10 @@ h2.section {
   animation: sync-spin .9s linear infinite;
 }
 @keyframes sync-spin { to { transform: rotate(360deg); } }
+
+/* нативное поле даты — вписываем в .field, iOS рисует своё колесо выбора */
+.field input[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-height: 28px;
+}
