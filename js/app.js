@@ -1,7 +1,7 @@
 import { clear, h, handlePop, pushOverlay, runCleanups, toast } from './ui.js';
 import { flushState, loadState, requestPersistence, saveState } from './store.js';
 import { maybeSendDailyBackup } from './backup.js';
-import { syncRequests } from './sync.js';
+import { syncPackings, syncRequests } from './sync.js';
 import { renderProducts } from './views/products.js';
 import { renderRecipe } from './views/recipe.js';
 import { renderPacking } from './views/packing.js';
@@ -29,6 +29,7 @@ const ctx = {
   render,
   toast,
   syncRequests: () => syncRequests(ctx),
+  syncPackings: () => syncPackings(ctx),
 };
 
 /** Изменить данные и перерисовать. Мутатор работает с копией. */
@@ -95,8 +96,9 @@ function renderTabs() {
         if (route.tab === tab.id) return;
         route.tab = tab.id;
         render();
-        // вход на «Заявки» подтягивает свежие данные с сервера
+        // вход на общий раздел подтягивает свежие данные с сервера
         if (tab.id === 'requests') syncRequests(ctx);
+        if (tab.id === 'accounting') syncPackings(ctx);
       },
     }, tab.title)),
   );
@@ -124,9 +126,13 @@ async function start() {
   requestPersistence();
   maybeSendDailyBackup(state);
   syncRequests(ctx);
+  syncPackings(ctx);
 
-  // вернулась сеть — дольём накопленные офлайн изменения заявок
-  window.addEventListener('online', () => syncRequests(ctx));
+  // вернулась сеть — дольём накопленные офлайн изменения
+  window.addEventListener('online', () => {
+    syncRequests(ctx);
+    syncPackings(ctx);
+  });
 
   if ('serviceWorker' in navigator) {
     try {

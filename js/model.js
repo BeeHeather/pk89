@@ -136,6 +136,44 @@ export function mergeRequests(local, remote) {
   return [...map.values()];
 }
 
+/** Запись журнала фасовок из хранилища или из синка. Null — если это мусор. */
+function normalizePacking(p) {
+  if (!p || typeof p !== 'object') return null;
+  const date = String(p.date ?? '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+
+  const entries = Array.isArray(p.entries) ? p.entries
+    .map((e) => ({
+      name: String(e.name ?? '').trim(),
+      emoji: String(e.emoji ?? '').trim(),
+      portions: Math.max(0, Math.round(Number(e.portions) || 0)),
+    }))
+    .filter((e) => e.name && e.portions > 0) : [];
+  if (entries.length === 0 && !p.deleted) return null;
+
+  const createdAt = Number(p.createdAt) || Date.now();
+  return {
+    id: p.id || newId(),
+    date,
+    entries,
+    deleted: !!p.deleted,
+    createdAt,
+    updatedAt: Number(p.updatedAt) || createdAt,
+  };
+}
+
+/** Слить журнал фасовок с пришедшим из синка — так же, как заявки. */
+export function mergePackings(local, remote) {
+  const map = new Map(local.map((p) => [p.id, p]));
+  for (const raw of Array.isArray(remote) ? remote : []) {
+    const p = normalizePacking(raw);
+    if (!p) continue;
+    const mine = map.get(p.id);
+    if (!mine || p.updatedAt > (mine.updatedAt || 0)) map.set(p.id, p);
+  }
+  return [...map.values()];
+}
+
 /**
  * Старый формат хранил ложки и вес ложки — переводим в граммы,
  * чтобы вес порции и склад не изменились после обновления.
@@ -214,20 +252,9 @@ export function normalize(raw) {  const base = emptyState();
     : [];
 
   // журнал результатов фасовки: что и сколько порций нафасовали за день
-  const packings = Array.isArray(raw.packings) ? raw.packings
-    .map((p) => ({
-      id: p.id || newId(),
-      date: String(p.date ?? ''),
-      entries: Array.isArray(p.entries) ? p.entries
-        .map((e) => ({
-          name: String(e.name ?? '').trim(),
-          emoji: String(e.emoji ?? '').trim(),
-          portions: Math.max(0, Math.round(Number(e.portions) || 0)),
-        }))
-        .filter((e) => e.name && e.portions > 0) : [],
-      createdAt: Number(p.createdAt) || Date.now(),
-    }))
-    .filter((p) => /^\d{4}-\d{2}-\d{2}$/.test(p.date) && p.entries.length > 0) : [];
+  const packings = Array.isArray(raw.packings)
+    ? raw.packings.map(normalizePacking).filter(Boolean)
+    : [];
 
   // текущая сессия кликера на «Фасовке» — переживает закрытие приложения
   const rawSession = raw.session;

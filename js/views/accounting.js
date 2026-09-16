@@ -5,6 +5,7 @@ import {
 import { countOf, daysAgoIso, isoToUi, plural, todayIso } from '../format.js';
 import { newId, productShortName } from '../model.js';
 import { EMOJIS } from '../presets.js';
+import { isSyncingPackings } from '../sync.js';
 import { buildPackingsReport, packingsReportFileName } from '../packingsReport.js';
 
 /** «🍝 Борщ» — имя с эмодзи для списков на экране. */
@@ -15,10 +16,13 @@ function itemLabel(name, emoji) {
 export function renderAccounting(ctx) {
   const { state } = ctx;
 
+  // помеченные удалёнными живут в данных ради синка, но в списках их нет
+  const visible = state.packings.filter((p) => !p.deleted);
+
   const totals = new Map(); // имя -> { portions, emoji }
   let todayTotal = 0;
   const today = todayIso();
-  for (const rec of state.packings) {
+  for (const rec of visible) {
     for (const entry of rec.entries) {
       const item = totals.get(entry.name) || { portions: 0, emoji: '' };
       item.portions += entry.portions;
@@ -31,7 +35,13 @@ export function renderAccounting(ctx) {
 
   const scroll = h('div', { class: 'scroll', style: { paddingTop: '14px' } });
 
-  if (state.packings.length === 0) {
+  if (isSyncingPackings()) {
+    // идёт обмен с сервером: список спрятан, но добавить фасовку можно
+    scroll.appendChild(h('div', { class: 'sync-loader' },
+      h('div', { class: 'ring' }),
+      h('p', { text: 'Обновление информации…' }),
+    ));
+  } else if (visible.length === 0) {
     scroll.appendChild(emptyState('🧾', 'Фасовок пока нет',
       'Нажмите «Добавить фасовку» и запишите, что и сколько порций нафасовали.'));
   } else {
@@ -43,7 +53,7 @@ export function renderAccounting(ctx) {
     const byProduct = [...totals.entries()].sort((a, b) => b[1].portions - a[1].portions);
 
     scroll.appendChild(h('div', { class: 'group-label', text: 'Журнал фасовок' }));
-    const journal = [...state.packings].sort((a, b) =>
+    const journal = [...visible].sort((a, b) =>
       b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
     for (const rec of journal) scroll.appendChild(packingCard(ctx, rec));
   }
@@ -54,7 +64,7 @@ export function renderAccounting(ctx) {
   return h('div', { class: 'screen' },
     header({
       title: 'Учёт',
-      subtitle: state.packings.length === 0
+      subtitle: visible.length === 0
         ? 'Результаты фасовки'
         : `${countOf(totalAll, 'порция', 'порции', 'порций')} готово за все время`,
     }),
@@ -87,7 +97,7 @@ function statsButton(ctx) {
     node.disabled = true;
     node.textContent = 'Собираю…';
     try {
-      const blob = buildPackingsReport(ctx.state.packings);
+      const blob = buildPackingsReport(ctx.state.packings.filter((p) => !p.deleted));
       const result = await shareOrDownload(blob, packingsReportFileName(), 'Учёт фасовки');
       if (result === 'downloaded') ctx.toast('Файл сохранён в загрузки');
     } catch (error) {
@@ -179,7 +189,7 @@ function buildPostText(state, from, to, boxes) {
   let total = 0;
 
   const period = [...state.packings]
-    .filter((rec) => rec.date >= from && rec.date <= to)
+    .filter((rec) => !rec.deleted && rec.date >= from && rec.date <= to)
     .sort((a, b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt);
 
   for (const rec of period) {
@@ -330,11 +340,15 @@ function openPacking(ctx, existing) {
       ctx.update((s) => {
         if (existing) {
           const target = s.packings.find((p) => p.id === existing.id);
-          if (target) Object.assign(target, { date, entries });
+          if (target) Object.assign(target, { date, entries, updatedAt: Date.now() });
         } else {
-          s.packings.push({ id: newId(), date, entries, createdAt: Date.now() });
+          s.packings.push({
+            id: newId(), date, entries, deleted: false,
+            createdAt: Date.now(), updatedAt: Date.now(),
+          });
         }
       });
+      ctx.syncPackings();
       close();
     }, { primary: true });
 
@@ -349,7 +363,15 @@ function openPacking(ctx, existing) {
           confirmText: 'Удалить',
         });
         if (!ok) return;
-        ctx.update((s) => { s.packings = s.packings.filter((p) => p.id !== existing.id); });
+        // мягкое удаление: пометка разойдётся по всем телефонам при синке
+        ctx.update((s) => {
+          const target = s.packings.find((p) => p.id === existing.id);
+          if (target) {
+            target.deleted = true;
+            target.updatedAt = Date.now();
+          }
+        });
+        ctx.syncPackings();
         close();
       }, { danger: true }));
     }

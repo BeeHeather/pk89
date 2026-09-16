@@ -120,6 +120,7 @@ function clickerScreen(ctx, session) {
         s.session.active = false;
         if (s.session.count > 0) recordPacked(s, s.session);
       });
+      ctx.syncPackings();
     });
     stop.classList.add('small');
     stop.style.flex = 'none';
@@ -154,9 +155,12 @@ function clickerScreen(ctx, session) {
 /** Дописать нафасованное в журнал учёта: под сегодняшней датой, той же строкой. */
 function recordPacked(s, session) {
   const today = todayIso();
-  let rec = s.packings.find((p) => p.date === today);
+  let rec = s.packings.find((p) => p.date === today && !p.deleted);
   if (!rec) {
-    rec = { id: newId(), date: today, entries: [], createdAt: Date.now() };
+    rec = {
+      id: newId(), date: today, entries: [], deleted: false,
+      createdAt: Date.now(), updatedAt: Date.now(),
+    };
     s.packings.push(rec);
   }
   const entry = rec.entries.find((e) => e.name.toLowerCase() === session.name.toLowerCase());
@@ -166,6 +170,7 @@ function recordPacked(s, session) {
   } else {
     rec.entries.push({ name: session.name, emoji: session.emoji, portions: session.count });
   }
+  rec.updatedAt = Date.now();
 }
 
 // ---------- оформление и утилиты ----------
