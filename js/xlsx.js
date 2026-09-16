@@ -326,7 +326,9 @@ function stylesXml() {
 
   out += '<numFmts count="3">';
   out += '<numFmt numFmtId="164" formatCode="#,##0.00"/>';
-  out += '<numFmt numFmtId="165" formatCode="DD\\.MM\\.YYYY"/>';
+  // точки в кавычках, а не через «\.»: экранирование бэкслэшем ломает
+  // просмотрщик дат на iOS (Quick Look показывает день тремя цифрами)
+  out += '<numFmt numFmtId="165" formatCode="dd&quot;.&quot;mm&quot;.&quot;yyyy"/>';
   out += '<numFmt numFmtId="166" formatCode="0.0%"/>';
   out += '</numFmts>';
 

@@ -130,18 +130,26 @@ function statsButton(ctx) {
 
 // ---------- создание и правка ----------
 
-/** Уникальные прошлые значения поля, свежие впереди, — для чипов-подсказок. */
+/**
+ * Частые значения поля: сортировка по числу употреблений, потом по свежести.
+ * Это и есть «кеш» подсказок — источник общий, прошлые заявки после синка.
+ */
 function knownValues(requests, key) {
-  const seen = new Set();
-  const values = [];
-  for (const r of [...requests].sort((a, b) => b.createdAt - a.createdAt)) {
+  const stats = new Map();
+  for (const r of requests) {
     if (r.deleted) continue;
     const value = r[key].trim();
-    if (!value || seen.has(value.toLowerCase())) continue;
-    seen.add(value.toLowerCase());
-    values.push(value);
+    if (!value) continue;
+    const k = value.toLowerCase();
+    const s = stats.get(k) || { value, count: 0, last: 0 };
+    s.count += 1;
+    s.last = Math.max(s.last, r.createdAt);
+    s.value = value;
+    stats.set(k, s);
   }
-  return values.slice(0, 8);
+  return [...stats.values()]
+    .sort((a, b) => b.count - a.count || b.last - a.last)
+    .map((s) => s.value);
 }
 
 function openRequest(ctx, existing) {
@@ -162,31 +170,53 @@ function openRequest(ctx, existing) {
       chip('Завтра', { onclick: () => { dateField.input.value = daysAgoIso(-1); } }),
     );
 
+    // подсказки перестраиваются на каждый ввод: топ-5 частых, отфильтрованных по набранному
+    let toSuggest = null;
+    let viaSuggest = null;
+
     const toField = field({
       value: draft.to,
       oninput: () => {
         draft.to = toField.input.value;
         refreshSave();
+        toSuggest?.redraw();
       },
     });
 
     const viaField = field({
       value: draft.via,
-      oninput: () => { draft.via = viaField.input.value; },
+      oninput: () => {
+        draft.via = viaField.input.value;
+        viaSuggest?.redraw();
+      },
     });
 
     const suggest = (key, fieldNode) => {
-      const values = knownValues(ctx.state.requests, key);
-      if (values.length === 0) return null;
-      return h('div', { class: 'chips', style: { marginTop: '8px' } },
-        values.map((value) => chip(value, {
+      const box = h('div', { class: 'chips', style: { marginTop: '8px' } });
+
+      const redraw = () => {
+        const query = fieldNode.input.value.trim().toLowerCase();
+        const values = knownValues(ctx.state.requests, key)
+          .filter((value) => value.toLowerCase() !== query)
+          .filter((value) => !query || value.toLowerCase().includes(query))
+          .slice(0, 5);
+
+        box.replaceChildren(...values.map((value) => chip(value, {
           onclick: () => {
             draft[key] = value;
             fieldNode.input.value = value;
             refreshSave();
+            redraw();
           },
         })));
+      };
+
+      redraw();
+      return { box, redraw };
     };
+
+    toSuggest = suggest('to', toField);
+    viaSuggest = suggest('via', viaField);
 
     const boxesInput = stepper({
       value: draft.boxes,
@@ -254,9 +284,9 @@ function openRequest(ctx, existing) {
     return [
       h('div', { class: 'block' }, h('p', { class: 'label', text: 'Дата' }), dateField, dateChips),
       h('div', { class: 'block' }, h('p', { class: 'label', text: 'Кому' }), toField,
-        suggest('to', toField)),
+        toSuggest.box),
       h('div', { class: 'block' }, h('p', { class: 'label', text: 'Через кого' }), viaField,
-        suggest('via', viaField)),
+        viaSuggest.box),
       h('div', { class: 'block' }, h('p', { class: 'label', text: 'Сколько коробок' }), boxesInput),
       actions,
     ];
